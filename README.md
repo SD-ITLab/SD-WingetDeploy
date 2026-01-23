@@ -3,150 +3,313 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://badgen.net/github/license/SD-ITLab/Winget-Script)
 
-# Winget Installer | Unattended Script
+# Winget Deploy UI by SD-ITLab
 
 ## ✨ Beschreibung
 
-**winget** ist der offizielle Paketmanager von Microsoft für Windows 10 und höhere Versionen. Er ermöglicht die automatisierte Installation, Aktualisierung und Deinstallation von Anwendungen über die Befehlszeile. Mit **winget** können Benutzer Software aus dem Microsoft Store sowie aus anderen Quellen, wie z. B. Community-Repositories, installieren und verwalten.
+Der **Winget Deploy UI by SD-ITLab** ist ein grafisches Installations-Tool auf Basis von  
+**Microsoft winget** (Windows Package Manager).
 
-Dieses Skript bietet eine unbeaufsichtigte Installation von Softwarepaketen ohne jegliche Benutzerinteraktion.
+Das Projekt kombiniert:
+- eine **moderne Python-GUI**
+- ein **robustes PowerShell-Backend**
+- und **winget** für die automatisierte Softwareinstallation
+
+Ziel ist eine **vollständig unbeaufsichtigte, stabile und fehlertolerante Installation**
+mehrerer Programme – ideal für Neuinstallationen, Service-Fälle oder Firmen-PCs.
 
 ---
 
-## 📚 Unterstützte Software
+## 🚀 Highlights & Funktionen
 
-### 🌍 **Browser**
+- ✅ Automatische **Erkennung & Einrichtung von winget**
+- ✅ Mehrfachauswahl von Programmen
+- ✅ **Serielle Installation** (Programm für Programm)
+- ✅ **Fehlertolerant**: einzelne fehlerhafte Pakete werden übersprungen
+- ✅ Saubere Statusanzeige:  
+  `x/y installiert`, `z übersprungen`
+- ✅ Keine Log-Spam-Fehlermeldungen
+- ✅ Silent / unattended Installationen
+- ✅ Moderne GUI mit Kategorien & Suche
+
+---
+
+## 🧩 Technischer Aufbau
+
+- **Frontend:** Python (GUI)
+- **Backend:** PowerShell (`winget-installscript.ps1`)
+- **Installer:** Microsoft winget (DesktopAppInstaller)
+
+Das PowerShell-Skript übernimmt:
+- Setup & Reparatur von winget (inkl. Abhängigkeiten)
+- Installation einzelner Pakete
+- saubere Rückmeldung über erfolgreiche & fehlgeschlagene Installationen
+
+Die GUI wertet diese Rückmeldungen aus und stellt sie übersichtlich dar.
+
+---
+
+## 📦 Unterstützte Software (Auszug)
+
+### 🌍 Browser
 - Google Chrome
 - Mozilla Firefox
 - Brave
 - Opera
 - Opera GX
 
-### 📝 **Dokumente & PDF**
+### 📝 Office & Dokumente
 - LibreOffice
-- OnlyOffice
+- ONLYOFFICE
 - Apache OpenOffice
 - Notepad++
 - PDF24 Creator
-- Adobe Acrobat Reader DC
+- Adobe Acrobat Reader
 
-### ⚙️ **Tools & Dienstprogramme**
-- 7-Zip
-- PeaZip
-- Everything
+### 🎵 Media & Multimedia
 - VLC Media Player
+- Media Player Classic (MPC-HC)
+- Spotify *(abhängig von winget/Store-Verfügbarkeit)*
+
+### 💬 Kommunikation
+- Mozilla Thunderbird
+- Microsoft Teams
+- WhatsApp Desktop
+- Zoom
+
+### 🛠 Tools & Utilities
+- 7-Zip
+- Everything
 - Malwarebytes
 
-### 🛡 **Sicherheit & Remote-Verwaltung**
+### 🔐 Remote & Sicherheit
 - TeamViewer
 - AnyDesk
 - RustDesk
+- Avira / Avast / AVG (Store-Versionen)
 
-### 📼 **Multimedia**
-- VLC Media Player
+### ☁️ Cloud
+- Google Drive
+- Microsoft OneDrive
+- Dropbox
 
-### 💻 **E-Mail & Kommunikation**
-- Mozilla Thunderbird
-
-### 💡 **Java-Laufzeitumgebungen**
-- Oracle Java Runtime Environment 8
-
----
-
-## ✅ Funktionsweise
-
-- Das Skript prüft, ob die jeweilige Software bereits auf dem System installiert ist, und überspringt die Installation, falls sie erkannt wird.
-- Falls die Software nicht vorhanden ist, wird sie unbemerkt im Hintergrund installiert.
+*(Die vollständige Liste ist im Code konfigurierbar.)*
 
 ---
 
-## 🔧 Verwendung
+## 🧠 Funktionslogik
 
-1. **Führen Sie das Winget-Skript als Administrator aus** (direkt oder per **"PowerShell in Batch"**).
-2. Das Skript installiert die vordefinierten Anwendungen im Hintergrund, ohne dass der Benutzer eingreifen muss.
-3. Nach Abschluss des Installationsvorgangs wird eine Bestätigungsmeldung angezeigt.
+- Programme werden **nacheinander** installiert
+- Bereits installierte Software wird übersprungen (winget-intern)
+- Schlägt ein Paket fehl:
+  - Installation läuft weiter
+  - Das Programm wird als **„übersprungen“** markiert
+- Am Ende erhält der Nutzer eine **klare Zusammenfassung**:
+  - `Fertig ✅ 5/5 installiert`
+  - oder  
+    `Fertig ⚠️ 4/5 installiert, 1 übersprungen`
+
+---
+
+## ▶️ Verwendung
+
+### Variante 1: GUI (empfohlen)
+1. Anwendung als **Administrator** starten
+2. Programme auswählen
+3. **„Winget / App installieren“** klicken
+4. Fortschritt & Status live verfolgen
+
+### Variante 2: PowerShell (direkt)
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File winget-installscript.ps1 Google.Chrome Mozilla.Firefox VideoLAN.VLC
+```
 
 ---
 
 ## ⚠️ Hinweise
 
-- Dieses Skript ist von der Verfügbarkeit der jeweiligen Anwendungen und deren Abhängigkeiten abhängig. Es ist ratsam, sicherzustellen, dass die genannten Versionen aktuell sind.
-- Das Skript kann individuell angepasst werden, um weitere Funktionalitäten hinzuzufügen oder den Installationsprozess zu modifizieren.
+- Einige Pakete (z. B. **Spotify**) können abhängig von:
+  - Windows-Version
+  - Store-Zustand
+  - Region  
+  fehlschlagen  
+  → diese werden **automatisch übersprungen**
+- Das Tool nimmt **keine Systemänderungen außerhalb der Installation** vor
+- Für den Einsatz in Firmenumgebungen empfohlen
 
-**Bei Fragen oder Support wenden Sie sich bitte an den Skriptautor.**
+---
+
+## 📜 Lizenz
+
+Dieses Projekt steht unter der **MIT License**.  
+Frei nutzbar, modifizierbar und erweiterbar.
+
+---
+
+## 🤝 Mitwirken
+
+Pull Requests, Ideen und Verbesserungen sind willkommen.  
+Für Feedback oder Support: **SD-ITLab**
+
+---
+
+© 2026 **SD-ITLab** – MIT licensed
+
 
 ---
 
 # ENGLISH
 
-# Winget Installer | Unattended Script
+![Winget](https://github.com/SD-ITLab/Winget-Script/assets/30149483/3f946c90-1f9e-4dc5-b231-ae5c023ec8f0)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://badgen.net/github/license/SD-ITLab/Winget-Script)
+
+# Winget Deploy UI by SD-ITLab
 
 ## ✨ Description
 
-**winget** is Microsoft's official package manager for Windows 10 and later versions. It enables automated installation, updating, and uninstallation of applications via the command line. With **winget**, users can install and manage software from the Microsoft Store as well as other sources like community repositories.
+**Winget Deploy UI by SD-ITLab** is a graphical software deployment tool based on  
+**Microsoft winget** (Windows Package Manager).
 
-This script provides an unattended installation of software packages without any user interaction.
+The project combines:
+- a **modern Python-based GUI**
+- a **robust PowerShell backend**
+- and **winget** for automated software installation
+
+The goal is a **fully unattended, stable and fault-tolerant installation** of multiple applications – ideal for fresh Windows installations, service cases, and enterprise environments.
 
 ---
 
-## 📚 Supported Software
+## 🚀 Features & Highlights
 
-### 🌍 **Browsers**
+- ✅ Automatic **detection, setup and repair of winget**
+- ✅ Multiple application selection
+- ✅ **Sequential installation** (one application at a time)
+- ✅ **Fault-tolerant**: failed packages are skipped instead of aborting
+- ✅ Clear status reporting:  
+  `x/y installed`, `z skipped`
+- ✅ No log spam in error dialogs
+- ✅ Silent / unattended installations
+- ✅ Modern UI with categories and search
+
+---
+
+## 🧩 Technical Overview
+
+- **Frontend:** Python (GUI)
+- **Backend:** PowerShell (`winget-installscript.ps1`)
+- **Installer:** Microsoft winget (DesktopAppInstaller)
+
+The PowerShell backend handles:
+- winget setup and recovery (including dependencies)
+- installation of individual packages
+- clean result reporting (successful / failed installations)
+
+The GUI evaluates these results and presents them in a user-friendly way.
+
+---
+
+## 📦 Supported Software (Excerpt)
+
+### 🌍 Browsers
 - Google Chrome
 - Mozilla Firefox
 - Brave
 - Opera
 - Opera GX
 
-### 📝 **Documents & PDF**
+### 📝 Office & Documents
 - LibreOffice
-- OnlyOffice
+- ONLYOFFICE
 - Apache OpenOffice
 - Notepad++
 - PDF24 Creator
-- Adobe Acrobat Reader DC
+- Adobe Acrobat Reader
 
-### ⚙️ **Tools & Utilities**
-- 7-Zip
-- PeaZip
-- Everything
+### 🎵 Media & Multimedia
 - VLC Media Player
+- Media Player Classic (MPC-HC)
+- Spotify *(availability depends on winget / Microsoft Store)*
+
+### 💬 Communication
+- Mozilla Thunderbird
+- Microsoft Teams
+- WhatsApp Desktop
+- Zoom
+
+### 🛠 Tools & Utilities
+- 7-Zip
+- Everything
 - Malwarebytes
 
-### 🛡 **Security & Remote Management**
+### 🔐 Remote & Security
 - TeamViewer
 - AnyDesk
 - RustDesk
+- Avira / Avast / AVG (Store versions)
 
-### 📼 **Multimedia**
-- VLC Media Player
+### ☁️ Cloud & Storage
+- Google Drive
+- Microsoft OneDrive
+- Dropbox
 
-### 💻 **Email & Communication**
-- Mozilla Thunderbird
-
-### 💡 **Java Runtime Environments**
-- Oracle Java Runtime Environment 8
-
----
-
-## ✅ Functionality
-
-- The script checks whether the respective software is already installed on the system and skips the installation if detected.
-- If the software is not present, it will be silently installed in the background.
+*(The full package list is configurable in the source code.)*
 
 ---
 
-## 🔧 Usage
+## 🧠 How It Works
 
-1. **Run the Winget script as an administrator** (directly or via **"PowerShell in Batch"**).
-2. The script installs the predefined applications in the background without requiring user interaction.
-3. A confirmation message is displayed upon completion of the installation process.
+- Applications are installed **sequentially**
+- Already installed software is skipped automatically (handled by winget)
+- If a package fails:
+  - installation continues
+  - the application is marked as **skipped**
+- After completion, the user receives a **clear summary**:
+  - `Finished ✅ 5/5 installed`
+  - or  
+    `Finished ⚠️ 4/5 installed, 1 skipped`
+
+---
+
+## ▶️ Usage
+
+### Option 1: GUI (recommended)
+1. Start the application **as administrator**
+2. Select the desired applications
+3. Click **"Winget / Install apps"**
+4. Follow progress and status in real time
+
+### Option 2: PowerShell (direct)
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File winget-installscript.ps1 Google.Chrome Mozilla.Firefox VideoLAN.VLC
+```
 
 ---
 
 ## ⚠️ Notes
 
-- This script depends on the availability of the respective applications and their dependencies. It is recommended to ensure that the mentioned versions are up to date.
-- The script can be customized to add additional functionalities or modify the installation process.
+- Some packages (e.g. **Spotify**) may fail depending on:
+  - Windows version
+  - Microsoft Store state
+  - region / account configuration  
+  → such packages are **automatically skipped**
+- The tool does **not modify system settings outside of application installation**
+- Recommended for professional and enterprise environments
 
-**For any questions or support, please contact the script author.**
+---
+
+## 📜 License
+
+This project is licensed under the **MIT License**.  
+Free to use, modify and extend.
+
+---
+
+## 🤝 Contributing
+
+Pull requests, ideas and improvements are welcome.  
+For feedback or support: **SD-ITLab**
+
+---
+
+© 2026 **SD-ITLab** – MIT licensed
