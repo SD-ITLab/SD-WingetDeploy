@@ -1,5 +1,5 @@
 
-![Winget](https://github.com/SD-ITLab/Winget-Script/assets/30149483/3f946c90-1f9e-4dc5-b231-ae5c023ec8f0)
+![WingetDeployUI](https://github.com/user-attachments/assets/e2d31de2-61de-438d-9055-a339218a8768)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://badgen.net/github/license/SD-ITLab/Winget-Script)
 
