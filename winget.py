@@ -1,5 +1,5 @@
 """
-CLS Software Installer – Winget (Compact List UI)
+Winget (Compact List UI)
 ------------------------------------------------
 GUI: customtkinter (Fluent-ish Windows 11 style)
 Backend: PowerShell / winget (Winget-Installscript.ps1)
@@ -1300,3 +1300,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
