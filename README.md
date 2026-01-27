@@ -1,5 +1,5 @@
 
-![WingetDeployUI](https://github.com/user-attachments/assets/e2d31de2-61de-438d-9055-a339218a8768)
+<img width="1122" height="652" alt="image" src="https://github.com/user-attachments/assets/68aafee7-2be0-4f8e-88ae-a67c9f7cc70a" />
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://badgen.net/github/license/SD-ITLab/Winget-Script)
 
