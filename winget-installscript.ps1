@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [switch] $SetupWinget,
+    [switch] $UpgradeAll,
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
     [string[]] $Apps
 )
@@ -268,6 +269,146 @@ function Invoke-WingetInstallForApps {
 }
 
 # =====================================================================
+# Upgradable Apps aus 'winget upgrade' einlesen
+# =====================================================================
+
+function Get-WingetUpgradableApps {
+    $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $wingetCmd) {
+        Write-Host "ERROR - winget command not found. Please run with -SetupWinget first."
+        return @()
+    }
+
+    # Winget-Ausgabe holen
+    $raw = & $wingetCmd.Source upgrade --include-unknown --accept-source-agreements 2>&1
+
+    $items   = @()
+    $inTable = $false
+
+    foreach ($line in $raw) {
+        if (-not $inTable) {
+            # Header erkennen (Name  Id  Version  Available  Source)
+            if ($line -match '^\s*Name\s+Id\s+Version') {
+                $inTable = $true
+            }
+            continue
+        }
+
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        if ($line -match '^-{3,}') { continue }
+
+        # Per „zwei oder mehr Spaces“ in Spalten aufsplitten
+        $parts = $line -split '\s{2,}'
+        if ($parts.Length -lt 3) { continue }
+
+        # Headerzeile überspringen (falls mehrmals)
+        if ($parts[0].Trim() -eq 'Name' -and $parts[1].Trim() -eq 'Id') { continue }
+
+        $name      = $parts[0].Trim()
+        $id        = $parts[1].Trim()
+        $current   = $parts[2].Trim()
+        $available = if ($parts.Length -ge 4) { $parts[3].Trim() } else { "" }
+
+        if ($id) {
+            $items += [pscustomobject]@{
+                Name      = $name
+                Id        = $id
+                Current   = $current
+                Available = $available
+            }
+        }
+    }
+
+    return $items
+}
+
+# =====================================================================
+# Alle von winget verwaltbaren Programme aktualisieren + Summary
+# =====================================================================
+
+function Invoke-WingetUpgradeAll {
+    $wingetCmd = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $wingetCmd) {
+        Write-Host "ERROR - winget command not found. Please run with -SetupWinget first."
+        exit 1
+    }
+
+    # 1) Vorher schauen, was überhaupt upgradebar ist
+    $before = Get-WingetUpgradableApps
+    if ($before.Count -eq 0) {
+        Write-Host "INFO  - No upgradable packages found."
+        Write-Host "UPGRADE_SUMMARY_BEGIN"
+        Write-Host "UPGRADE_NONE"
+        Write-Host "UPGRADE_SUMMARY_END"
+        exit 0
+    }
+
+    Write-Host "INFO  - Found $($before.Count) upgradable package(s)."
+    foreach ($pkg in $before) {
+        Write-Host ("PENDING - {0} ({1}) {2} -> {3}" -f $pkg.Name, $pkg.Id, $pkg.Current, $pkg.Available)
+    }
+
+    Write-Host ""
+    Write-Host "INFO  - Running 'winget upgrade --all' ..."
+    Write-Host "INFO  - Hinweis: Es werden nur Programme aktualisiert,"
+    Write-Host "        die über winget verwaltet werden können."
+
+    # 2) Upgrade durchführen
+    $args = @(
+        "upgrade",
+        "--all",
+        "--accept-source-agreements",
+        "--accept-package-agreements"
+    )
+
+    $proc = Start-Process -FilePath $wingetCmd.Source `
+        -ArgumentList $args `
+        -NoNewWindow `
+        -PassThru `
+        -Wait
+
+    $exitCode = $proc.ExitCode
+
+    # 3) Nachher erneut schauen, was noch upgradebar ist
+    $after    = Get-WingetUpgradableApps
+    $afterIds = $after | ForEach-Object { $_.Id }
+
+    $updated    = @()
+    $remaining  = @()
+
+    foreach ($pkg in $before) {
+        if ($afterIds -contains $pkg.Id) {
+            $remaining += $pkg
+        }
+        else {
+            $updated += $pkg
+        }
+    }
+
+    Write-Host ""
+    Write-Host "UPGRADE_SUMMARY_BEGIN"
+
+    foreach ($pkg in $updated) {
+        Write-Host ("UPDATED_APP: {0} | {1} | {2} -> {3}" -f $pkg.Name, $pkg.Id, $pkg.Current, $pkg.Available)
+    }
+
+    foreach ($pkg in $remaining) {
+        Write-Host ("NOT_UPDATED_APP: {0} | {1} | {2} -> {3}" -f $pkg.Name, $pkg.Id, $pkg.Current, $pkg.Available)
+    }
+
+    Write-Host "UPGRADE_SUMMARY_END"
+
+    if ($exitCode -eq 0) {
+        Write-Host "OK    - winget upgrade --all completed with exit code 0."
+    }
+    else {
+        Write-Host "WARN  - winget upgrade --all finished with exit code $exitCode"
+    }
+
+    exit $exitCode
+}
+
+# =====================================================================
 # Main
 # =====================================================================
 
@@ -276,6 +417,10 @@ if ($SetupWinget.IsPresent) {
     Install-WingetDependencies
     Install-WingetCli
     Write-Host "OK    - SetupWinget completed."
+}
+elseif ($UpgradeAll.IsPresent) {
+    Write-Host "INFO  - Running in UpgradeAll mode."
+    Invoke-WingetUpgradeAll
 }
 elseif ($Apps -and $Apps.Count -gt 0) {
     Write-Host "INFO  - Running in Apps-install mode for $($Apps.Count) app(s)."
