@@ -88,7 +88,6 @@ ICON_PATH = resource_path("icon.ico")
 # PowerShell-Script für Winget/AppInstaller/Install
 WINGET_SETUP_PS = resource_path("winget-installscript.ps1")
 
-
 # =============================================================================
 # Helper, um das PowerShell-Skript aufzurufen
 # =============================================================================
@@ -116,6 +115,14 @@ def _run_silent(cmd: list[str], timeout: int = 5) -> subprocess.CompletedProcess
 
 
 def run_winget_ps_setup() -> None:
+    """
+    Führt das PowerShell-Backend im Setup-Modus aus, um
+    Winget + App Installer + Abhängigkeiten zu installieren/aktualisieren.
+
+    - nutzt genau WINGET_SETUP_PS
+    - schreibt ein Log (winget-setup.log) ins EXE-/Script-Verzeichnis
+    - wirft bei Fehlern eine RuntimeError mit Hinweis auf das Log
+    """
     if not WINGET_SETUP_PS.exists():
         raise FileNotFoundError(f"Winget-Installscript nicht gefunden: {WINGET_SETUP_PS}")
 
@@ -848,6 +855,32 @@ class WingetInstallerApp(ctk.CTk):
         self.btn_fix_winget.grid(row=4, column=0, sticky="ew", padx=6, pady=(10, 0))
         self.btn_fix_winget.configure(state="disabled")
 
+        # Alle per winget verwaltbaren Programme aktualisieren
+        self.btn_upgrade_all = ctk.CTkButton(
+            right,
+            text="Installierte Programme aktualisieren",
+            width=260,
+            command=self._on_upgrade_all,
+        )
+        self.btn_upgrade_all.grid(row=5, column=0, sticky="ew", padx=6, pady=(6, 0))
+        self.btn_upgrade_all.configure(state="disabled")
+
+        # Hinweis, dass nicht wirklich *alle* Programme erwischt werden
+        self.upgrade_hint_lbl = ctk.CTkLabel(
+            right,
+            text=(
+                "Hinweis:\n"
+                "Es werden nur Programme aktualisiert,\n"
+                "die über winget verwaltet werden können.\n"
+                "Manuell installierte Software oder manche\n"
+                "Store-Apps bleiben unverändert."
+            ),
+            font=ctk.CTkFont(size=9),
+            text_color=TEXT_MUTED,
+            justify="left",
+        )
+        self.upgrade_hint_lbl.grid(row=6, column=0, sticky="w", padx=6, pady=(4, 0))
+
         # Bottom bar
         bottom = ctk.CTkFrame(self, corner_radius=0, fg_color=BG_WINDOW)
         bottom.grid(row=1, column=0, sticky="ew")
@@ -1039,6 +1072,11 @@ class WingetInstallerApp(ctk.CTk):
         if hasattr(self, "btn_fix_winget"):
             self.btn_fix_winget.configure(state="normal" if enabled else "disabled")
 
+    def _set_upgrade_all_state(self, enabled: bool):
+        if hasattr(self, "btn_upgrade_all"):
+            self.btn_upgrade_all.configure(state="normal" if enabled else "disabled")
+
+
     def _check_dependencies_async(self):
         threading.Thread(target=self._check_dependencies_worker, daemon=True).start()
 
@@ -1078,6 +1116,9 @@ class WingetInstallerApp(ctk.CTk):
         # Fix-Button, wenn Winget fehlt/veraltet ODER App Installer fehlt
         need_fix = (state != WingetState.OK) or (not app_ok)
         self.after(0, self._set_fix_button_state, need_fix)
+
+        can_upgrade = state == WingetState.OK
+        self.after(0, self._set_upgrade_all_state, can_upgrade)
 
 
     def _on_fix_winget(self):
@@ -1144,6 +1185,181 @@ class WingetInstallerApp(ctk.CTk):
                     self.btn_fix_winget.configure(state="normal")
                     self.btn_install.configure(state="normal")
                     self.btn_readme.configure(state="normal")
+
+                self.after(0, re_enable)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_upgrade_all(self):
+        if self._installing:
+            return
+
+        if not messagebox.askyesno(
+            "Programme aktualisieren",
+            "Es werden alle Programme aktualisiert,\n"
+            "die über winget verwaltet werden können.\n\n"
+            "Fortfahren?"
+        ):
+            return
+
+        self._installing = True
+        self.btn_install.configure(state="disabled")
+        self.btn_fix_winget.configure(state="disabled")
+        self.btn_upgrade_all.configure(state="disabled")
+        self.btn_readme.configure(state="disabled")
+        self.progress.set(0.0)
+        self.status_lbl.configure(text="Aktualisiere Programme (winget) …")
+
+        def worker():
+            try:
+                cmd = [
+                    "powershell.exe",
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-File", str(WINGET_SETUP_PS),
+                    "-UpgradeAll",
+                ]
+
+                stdout_lines: list[str] = []
+
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    creationflags=subprocess.CREATE_NO_WINDOW,
+                )
+
+                assert proc.stdout is not None
+                for raw in proc.stdout:
+                    line = raw.rstrip("\r\n")
+                    if not line:
+                        continue
+
+                    stdout_lines.append(line)
+
+                    # Letzte Zeile im Status anzeigen
+                    self.after(
+                        0,
+                        lambda l=line: self.status_lbl.configure(text=l[:140]),
+                    )
+
+                rc = proc.wait()
+
+                # ---- Summary aus der PS-Ausgabe parsen ----
+                updated: list[tuple[str, str, str, str]] = []
+                not_updated: list[tuple[str, str, str, str]] = []
+                inside = False
+                had_none = False
+
+                for line in stdout_lines:
+                    if line == "UPGRADE_SUMMARY_BEGIN":
+                        inside = True
+                        continue
+                    if line == "UPGRADE_SUMMARY_END":
+                        inside = False
+                        continue
+                    if not inside:
+                        continue
+
+                    if line == "UPGRADE_NONE":
+                        had_none = True
+                        continue
+
+                    if line.startswith("UPDATED_APP: "):
+                        payload = line[len("UPDATED_APP: "):]
+                        parts = [p.strip() for p in payload.split("|")]
+                        name, appid, cur, avail = (parts + ["", "", "", ""])[:4]
+                        updated.append((name, appid, cur, avail))
+                    elif line.startswith("NOT_UPDATED_APP: "):
+                        payload = line[len("NOT_UPDATED_APP: "):]
+                        parts = [p.strip() for p in payload.split("|")]
+                        name, appid, cur, avail = (parts + ["", "", "", ""])[:4]
+                        not_updated.append((name, appid, cur, avail))
+
+                def finish():
+                    self.progress.set(1.0)
+
+                    # Zählwerte aus den Listen
+                    total_updated = len(updated)
+                    total_not_updated = len(not_updated)
+                    total = total_updated + total_not_updated
+
+                    # Fall: keine aktualisierbaren Programme
+                    if had_none and total == 0:
+                        self.status_lbl.configure(
+                            text="Fertig – keine aktualisierbaren Programme gefunden."
+                        )
+                        return
+
+                    # Statuszeile mit (X/Y) Programme aktualisiert
+                    if total > 0:
+                        if rc == 0:
+                            prefix = "Fertig ✅"
+                        else:
+                            prefix = "Fertig ⚠️"
+                        self.status_lbl.configure(
+                            text=f"{prefix} ({total_updated}/{total}) Programme aktualisiert."
+                        )
+                    else:
+                        # Fallback, falls aus irgendeinem Grund keine Summary da ist
+                        if rc == 0:
+                            self.status_lbl.configure(
+                                text="Fertig ✅ Programme wurden aktualisiert."
+                            )
+                        else:
+                            self.status_lbl.configure(
+                                text=f"Fertig ⚠️ ExitCode {rc} (nicht alle Updates möglich)"
+                            )
+
+                    # Popup-Zusammenfassung bauen (falls Marker vorhanden)
+                    if total == 0:
+                        return  # nichts zum Anzeigen
+
+                    lines: list[str] = []
+
+                    if updated:
+                        lines.append("Aktualisierte Programme:\n")
+                        for name, appid, cur, avail in updated:
+                            if cur and avail:
+                                lines.append(f"• {name} ({appid}) {cur} → {avail}")
+                            else:
+                                lines.append(f"• {name} ({appid})")
+                        lines.append("")
+
+                    if not_updated:
+                        lines.append("Nicht aktualisiert / weiterhin als Update verfügbar:\n")
+                        for name, appid, cur, avail in not_updated:
+                            if cur and avail:
+                                lines.append(f"• {name} ({appid}) {cur} → {avail}")
+                            else:
+                                lines.append(f"• {name} ({appid})")
+
+                    messagebox.showinfo(
+                        "Winget-Upgrade – Zusammenfassung",
+                        "\n".join(lines),
+                    )
+
+                self.after(0, finish)
+
+            except Exception as exc:
+                self.after(
+                    0,
+                    lambda: messagebox.showerror(
+                        "Fehler",
+                        f"Fehler beim Aktualisieren:\n{exc}",
+                    ),
+                )
+            finally:
+                def re_enable():
+                    self._installing = False
+                    self.btn_install.configure(state="normal")
+                    self.btn_readme.configure(state="normal")
+                    # Fix-/Upgrade-Button-Zustand neu prüfen
+                    self._check_dependencies_async()
 
                 self.after(0, re_enable)
 
@@ -1300,4 +1516,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
