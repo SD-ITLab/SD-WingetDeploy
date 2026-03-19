@@ -92,18 +92,58 @@ function Install-WingetDependencies {
 
         foreach ($file in $appxFiles) {
             Write-Host "INFO  - Installing dependency: $($file.Name)"
-            try {
-                Add-AppxPackage -Path $file.FullName -ErrorAction Stop
-                Write-Host "OK    - Dependency installed/updated: $($file.Name)"
-            }
-            catch {
-                $text = $_ | Out-String
-                Write-Host "WARN  - Failed to install dependency $($file.Name):"
-                Write-Host $text
-                throw
+
+            $maxAttempts  = 4
+            $delaySeconds = 20
+
+            for ($i = 1; $i -le $maxAttempts; $i++) {
+                try {
+                    Add-AppxPackage -Path $file.FullName -ErrorAction Stop
+                    Write-Host "OK    - Dependency installed/updated: $($file.Name)"
+                    break
+                }
+                catch {
+                    $hr   = $_.Exception.HResult
+                    $hex  = '0x{0:X8}' -f ($hr -band 0xffffffff)
+                    $text = $_ | Out-String
+
+                    # 0x80073D06 -> höhere Version bereits installiert (OK, überspringen)
+                    if ($hex -eq '0x80073D06') {
+                        Write-Host "INFO  - Skipping $($file.Name): newer version already installed (HResult ${hex})."
+                        break
+                    }
+
+                    # 0x80073D02 / 0x80073D0A -> Ressourcen in Benutzung / Installation läuft (Retry)
+                    if (($hex -eq '0x80073D02' -or $hex -eq '0x80073D0A') -and $i -lt $maxAttempts) {
+                        Write-Host "WARN  - Dependency blocked (HResult ${hex}) – Windows components are in use." -ForegroundColor Yellow
+                        try {
+                            Write-Host "INFO  - Retrying with -ForceApplicationShutdown..."
+                            Add-AppxPackage -Path $file.FullName -ForceApplicationShutdown -ErrorAction Stop
+                            Write-Host "OK    - Dependency installed/updated with ForceApplicationShutdown: $($file.Name)"
+                            break
+                        }
+                        catch {
+                            Write-Host "INFO  - Waiting ${delaySeconds}s before retry ($i/$maxAttempts)..."
+                            Start-Sleep -Seconds $delaySeconds
+                            continue
+                        }
+                    }
+
+                    # Wenn nach den Retries immer noch blockiert -> klarer Hinweis
+                    if ($hex -eq '0x80073D02' -or $hex -eq '0x80073D0A') {
+                        Write-Host ""
+                        Write-Host "ERROR - Dependency installation is blocked by running Windows apps/components." -ForegroundColor Red
+                        Write-Host "INFO  - Please close Widgets / Notepad / WebExperience (Client.WebExperience) or log off once, then retry." -ForegroundColor Red
+                        Write-Host $text
+                        throw
+                    }
+
+                    Write-Host "WARN  - Failed to install dependency $($file.Name) (HResult ${hex}):"
+                    Write-Host $text
+                    throw
+                }
             }
         }
-
         Write-Host "OK    - All dependencies from dependencies zip processed."
     }
     finally {
@@ -119,7 +159,7 @@ function Install-WingetCli {
     Write-Host "INFO  - Checking WinGet / DesktopAppInstaller..."
 
     $pkgFamily        = 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe'
-    $minWingetVersion = [version]"1.12.0.0"
+    $minWingetVersion = [version]"1.12.400.0"
 
     # 1) Aktuelle WinGet-Version prüfen
     $needInstall = $true
@@ -149,6 +189,53 @@ function Install-WingetCli {
 
     if (-not $needInstall) { return }
 
+    # kleine Helper-Funktion für die Bundle-Installation mit Retry
+    function Invoke-DesktopAppInstallerBundle {
+        param(
+            [string]$BundlePath,
+            [int]$MaxAttempts  = 5,
+            [int]$DelaySeconds = 20
+        )
+
+        for ($i = 1; $i -le $MaxAttempts; $i++) {
+            Write-Host "INFO  - Installing DesktopAppInstaller/WinGet bundle (try $i/$MaxAttempts)..."
+
+            try {
+                Add-AppxPackage -Path $BundlePath -ErrorAction Stop
+                Write-Host "OK    - DesktopAppInstaller bundle installed."
+                return
+            }
+            catch {
+                $hr  = $_.Exception.HResult
+                $hex = ('0x{0:X8}' -f ($hr -band 0xffffffff))
+
+                Write-Host "WARN  - Bundle installation failed with HResult ${hex}:"
+                Write-Host ($_ | Out-String)
+
+                # typische Deployment-Fehler, wenn der Store/AppInstaller gerade in Benutzung ist:
+                # 0x80073D02 / RESOURCES_IN_USE
+                # 0x80073D0A / INSTALL_IN_PROGRESS
+                if (($hex -eq '0x80073D02' -or $hex -eq '0x80073D0A') -and $i -lt $MaxAttempts) {
+                    Write-Host "INFO  - Deployment in use / ongoing. Retrying with -ForceApplicationShutdown..."
+                    try {
+                        Add-AppxPackage -Path $BundlePath -ForceApplicationShutdown -ErrorAction Stop
+                        Write-Host "OK    - DesktopAppInstaller bundle installed with ForceApplicationShutdown."
+                        return
+                    }
+                    catch {
+                        Write-Host "INFO  - Waiting $DelaySeconds seconds before next retry..."
+                        Start-Sleep -Seconds $DelaySeconds
+                        continue
+                    }
+                }
+
+                throw  # andere Fehler oder letzter Versuch -> nach außen geben
+            }
+        }
+
+        throw "DesktopAppInstaller bundle installation failed after $MaxAttempts attempts."
+    }
+
     # 2) Bundle herunterladen und lokal installieren
     $assets = Get-WingetLatestReleaseAssets
 
@@ -168,9 +255,8 @@ function Install-WingetCli {
             throw "Bundle msixbundle was not downloaded correctly."
         }
 
-        Write-Host "INFO  - Installing DesktopAppInstaller/WinGet bundle..."
-        Add-AppxPackage -Path $bundlePath -ErrorAction Stop
-        Write-Host "OK    - DesktopAppInstaller bundle installed."
+        # >>> hier statt direktem Add-AppxPackage den Retry-Wrapper verwenden
+        Invoke-DesktopAppInstallerBundle -BundlePath $bundlePath -MaxAttempts 5 -DelaySeconds 20
 
         # nach der Bundle-Installation WinGet/Store-App für den Benutzer registrieren (falls nötig)
         try {
