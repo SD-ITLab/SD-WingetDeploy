@@ -36,18 +36,19 @@ except ImportError:
 # Configuration
 # =============================================================================
 
-README_URL = "https://github.com/SD-ITLab/Winget-Script"  # anpassen
+README_URL = "https://github.com/SD-ITLab/SD-WingetDeploy"
 LOGO_URL = "https://sd-itlab.de/"
 
 BRAND_TEXT = "© 2026 SD-ITLab – MIT licensed"
 BRAND_URL = "https://sd-itlab.de"
+
 
 APP_TITLE = "Winget Deploy UI by SD-ITLab"
 WINDOW_SIZE = "1120x620"
 
 # Feste Maße für die App-Zeilen
 ROW_WIDTH = 760
-ROW_HEIGHT = 90  # kannst du bei Bedarf leicht anpassen
+ROW_HEIGHT = 64  # Angepasst für ein kompakteres Layout (weniger "Luft")
 MID_WIDTH = 820   # feste Breite der mittleren Spalte (App-Liste)
 
 # --- Fluent-ish (Windows 11) Light Palette ---
@@ -87,6 +88,7 @@ LOGO_PATH = resource_path("logo.png")
 ICON_PATH = resource_path("icon.ico")
 # PowerShell-Script für Winget/AppInstaller/Install
 WINGET_SETUP_PS = resource_path("winget-installscript.ps1")
+
 
 # =============================================================================
 # Helper, um das PowerShell-Skript aufzurufen
@@ -290,7 +292,6 @@ PACKAGES: Dict[str, WingetPackage] = {
     # Media
     "adobe":       WingetPackage("Adobe.Acrobat.Reader.64-bit", "Adobe Acrobat Reader", "PDF-Viewer von Adobe.", "Media", False),
     "vlc":         WingetPackage("VideoLAN.VLC", "VLC Media Player", "Media Player für fast alles.", "Media", False),
-    "spotify":     WingetPackage("Spotify.Spotify", "Spotify", "Musik-Streaming.", "Media", False),
     "mpc-hc":      WingetPackage("clsid2.mpc-hc", "Media Player Classic", "Media Player Classic (leichter Player).", "Media", False),
 
     # Security
@@ -487,7 +488,11 @@ class PackageRow(ctk.CTkFrame):
         self.on_toggle = on_toggle
 
         self.configure(border_width=1, border_color=BORDER_CARD)
+
+        # Spalten- und Zeilengewichte für exaktes Grid-Layout definieren
         self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
 
         pkg = PACKAGES[key]
 
@@ -498,7 +503,8 @@ class PackageRow(ctk.CTkFrame):
             width=18,
             command=self._handle_toggle,
         )
-        self.cb.grid(row=0, column=0, padx=(10, 8), pady=10, sticky="nw")
+        # Checkbox nimmt die gesamte linke Höhe ein (rowspan=2) und wird links (w) zentriert
+        self.cb.grid(row=0, column=0, rowspan=2, padx=(16, 12), sticky="w")
 
         self.title = ctk.CTkLabel(
             self,
@@ -506,7 +512,8 @@ class PackageRow(ctk.CTkFrame):
             font=ctk.CTkFont(size=12, weight="bold"),
             anchor="w",
         )
-        self.title.grid(row=0, column=1, sticky="nw", padx=(0, 10), pady=(8, 0))
+        # Titel in die obere Hälfte, unten andocken (sw)
+        self.title.grid(row=0, column=1, sticky="sw", padx=(0, 10), pady=(0, 2))
 
         # Wrap auf feste Breite, damit Text nicht alles auseinanderzieht
         self.sub = ctk.CTkLabel(
@@ -518,9 +525,10 @@ class PackageRow(ctk.CTkFrame):
             justify="left",
             wraplength=width - 60,
         )
-        self.sub.grid(row=1, column=1, sticky="nw", padx=(0, 10), pady=(0, 4))
+        # Beschreibung in die untere Hälfte, oben andocken (nw)
+        self.sub.grid(row=1, column=1, sticky="nw", padx=(0, 10), pady=(2, 0))
 
-        for w in (self, self.title, self.sub):
+        for w in (self, self.title, self.sub, self.cb):
             w.bind("<Button-1>", self._on_click)
 
         self._update_style(self.var.get())
@@ -935,7 +943,7 @@ class WingetInstallerApp(ctk.CTk):
             self.logo_label.configure(text="(Pillow fehlt)\n`pip install pillow`", text_color=TEXT_MUTED, justify="center")
             return
         if not LOGO_PATH.exists():
-            self.logo_label.configure(text="CLS-Logo\n(logo.png nicht gefunden)", text_color=TEXT_MUTED, justify="center")
+            self.logo_label.configure(text="Logo\n(logo.png nicht gefunden)", text_color=TEXT_MUTED, justify="center")
             return
 
         img = Image.open(LOGO_PATH)
